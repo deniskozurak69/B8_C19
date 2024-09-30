@@ -46,6 +46,7 @@
                         <div class="button-container">
                             <button class="download-file-btn" data-path="@Url.Content(item.ProfilePhoto)">Download to PC</button>
                             <button class="upload-to-drive-btn" data-path="@Url.Content(item.ProfilePhoto)">Upload to Google Drive</button>
+                            <button class="upload-to-azure-btn" data-user-id="@item.UserId" data-path="@Url.Content(item.ProfilePhoto)">Upload to Azure Blob</button>
                         </div>
                     }
                     else
@@ -290,4 +291,29 @@
         });
     });
 </script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            var azureUploadButtons = document.querySelectorAll('.upload-to-azure-btn');
+
+            azureUploadButtons.forEach(function (button) {
+                button.addEventListener('click', function () {
+                    var filePath = this.getAttribute('data-path');
+                    var userId = this.getAttribute('data-user-id');
+
+                    $.ajax({
+                        url: '/Users/UploadToAzure',
+                        method: 'POST',
+                        data: { userId: userId, filePath: filePath },
+                        success: function (response) {
+                            alert(response.message);
+                        },
+                        error: function (xhr, status, error) {
+                            alert("Error: " + xhr.responseText);
+                        }
+                    });
+                });
+            });
+        });
+    </script>
 }

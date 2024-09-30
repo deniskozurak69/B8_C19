@@ -15,14 +15,19 @@ namespace LibraryWebApplication1.Controllers
     {
         private readonly DblibraryContext _context;
         private readonly IWebHostEnvironment _webHostEnvironment;
-        //private readonly FileProcessingService _fileProcessingService;
+        private readonly FileProcessingService _fileProcessingService;
         private readonly IMemoryCache _memoryCache;
-        public UsersController(DblibraryContext context, IWebHostEnvironment webHostEnvironment,/* FileProcessingService fileProcessingService,*/ IMemoryCache memoryCache)
+        private readonly AzureBlobService _blobService;
+        public UsersController(DblibraryContext context, IWebHostEnvironment webHostEnvironment,FileProcessingService fileProcessingService, IMemoryCache memoryCache)
         {
             _context = context;
             _webHostEnvironment = webHostEnvironment;
-            //_fileProcessingService = fileProcessingService;
+            _fileProcessingService = fileProcessingService;
             _memoryCache = memoryCache;
+            string connectionString = "DefaultEndpointsProtocol=https;AccountName=denisstorageaccount;AccountKey=8Z/0rX0DcP6Os2ZgyuEI0d9PUfDeOWY+WP+WmxVB1dP/Mnj0Z5HcXJzDeu8OrXshmdFESV5WSEdo+ASt1ZnsbQ==;EndpointSuffix=core.windows.net";
+            string containerName = "deniscontainers";
+            _blobService = new AzureBlobService(connectionString, containerName, webHostEnvironment);
+
         }
         private async Task<List<User>> GetCachedUsersWithArticlesAsync()
         {
@@ -61,27 +66,29 @@ namespace LibraryWebApplication1.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Create([Bind("UserId,Username,Password,Latitude,Longtitude")] User user, IFormFile photoFile, bool compressImage)
         {
+            string defaultProfilePhotoUrl = "https://denisstorageaccount.blob.core.windows.net/deniscontainers/5393eb4f-4537-4478-bdd6-7dfd3401d8ba.jpg";
             if (photoFile != null && photoFile.Length > 0)
             {
                 string fileName = Guid.NewGuid().ToString() + Path.GetExtension(photoFile.FileName);
                 string uploadsFolder = Path.Combine(_webHostEnvironment.WebRootPath, "uploads");
-                string filePath = Path.Combine(uploadsFolder, fileName);
+                string filePath = Path.Combine(uploadsFolder, fileName);                
                 using (var stream = new FileStream(filePath, FileMode.Create))
                 {
                     await photoFile.CopyToAsync(stream);
                 }
                 user.ProfilePhoto = Path.Combine("/uploads", fileName);
-                //await _fileProcessingService.SendFileProcessingMessageAsync(filePath);
+                await _fileProcessingService.SendFileProcessingMessageAsync(filePath);
                 string newFileName = Path.Combine(Path.GetFileNameWithoutExtension(fileName) + "_compressed.jpg");
                 if (compressImage)
                 {
-                    user.ProfilePhoto = Path.Combine("/uploads", newFileName);
+                    user.ProfilePhoto = Path.Combine("/uploads", newFileName);                    
                 }
             }
             else
             {
-                ModelState.AddModelError("ProfilePhotoFile", "Файл не додано");
-                return View(user);
+                //ModelState.AddModelError("ProfilePhotoFile", "Файл не додано");
+                user.ProfilePhoto = defaultProfilePhotoUrl;
+                //return View(user);
             }
             int maxUserId = _context.Users.Max(c => (int?)c.UserId) ?? 0;
             user.UserId = maxUserId + 1;
@@ -120,7 +127,7 @@ namespace LibraryWebApplication1.Controllers
                         await photoFile.CopyToAsync(stream);
                     }
                     user.ProfilePhoto = Path.Combine("uploads", fileName);
-                    //await _fileProcessingService.SendFileProcessingMessageAsync(filePath);
+                    await _fileProcessingService.SendFileProcessingMessageAsync(filePath);
                     string newFileName = Path.Combine(Path.GetFileNameWithoutExtension(fileName) + "_compressed.jpg");
                     if (compressImage)
                     {
@@ -193,6 +200,20 @@ namespace LibraryWebApplication1.Controllers
                 Console.WriteLine($"Username: {user.Username}");
             }
             return Json(users);
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> UploadToAzure(int userId, string filePath)
+        {
+            try
+            {
+                string blobUrl = await _blobService.UploadFileToBlobAsync(filePath);
+                return Ok(new { message = "File uploaded to Azure successfully!", url = blobUrl });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = "Error uploading file", error = ex.Message });
+            }
         }
         public IActionResult UsersMap()
         {

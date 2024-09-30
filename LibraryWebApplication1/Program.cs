@@ -17,7 +17,10 @@ using System.Threading.Tasks;
 using DocumentFormat.OpenXml.Office2016.Drawing.ChartDrawing;
 using Azure.Messaging.ServiceBus;
 using LibraryWebApplication1.Services;
+using Azure.Storage.Blobs;
 var builder = WebApplication.CreateBuilder(args);
+var blobConnectionString = builder.Configuration["AzureBlobStorage:ConnectionString"];
+var blobContainerName = builder.Configuration["AzureBlobStorage:ContainerName"];
 builder.Services.AddControllersWithViews();
 builder.Services.AddMemoryCache();
 builder.Services.AddDbContext<DblibraryContext>(options =>
@@ -38,6 +41,23 @@ builder.Services.AddAuthentication(o =>
                 o.ClientSecret = "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";
             });
 builder.Services.AddSingleton<LuceneService>();
+builder.Services.AddSingleton<ServiceBusClient>(provider =>
+{
+    string connectionString = builder.Configuration.GetConnectionString("ServiceBusConnection");
+    return new ServiceBusClient(connectionString);
+});
+builder.Services.AddSingleton<FileProcessingService>();
+builder.Services.AddSingleton<ImageProcessingService>();
+builder.Services.AddSingleton(x => new BlobServiceClient(blobConnectionString));
+builder.Services.AddHostedService<FileProcessingBackgroundService>(provider =>
+{
+    var serviceBusClient = provider.GetRequiredService<ServiceBusClient>();
+    var logger = provider.GetRequiredService<ILogger<FileProcessingBackgroundService>>();
+    var imageProcessingService = provider.GetRequiredService<ImageProcessingService>();
+    var webHostEnvironment = provider.GetRequiredService<IWebHostEnvironment>();
+
+    return new FileProcessingBackgroundService(serviceBusClient, "queue", logger, imageProcessingService, webHostEnvironment);
+});
 builder.Services.AddLogging(config =>
 {
     config.AddConsole();
@@ -79,5 +99,8 @@ app.MapControllerRoute(
 app.MapControllerRoute(
     name: "usersMap",
     pattern: "{controller=Users}/{action=UsersMap}");
+app.MapControllerRoute(
+    name: "blob",
+    pattern: "{controller=Blob}/{action=UploadForm}/{id?}");
 app.Run();
 
