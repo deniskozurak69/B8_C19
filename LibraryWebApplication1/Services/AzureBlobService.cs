@@ -30,6 +30,6 @@ public class AzureBlobService
             await blobClient.UploadAsync(fs, true);
         }
 
-        return blobClient.Uri.ToString(); // повертає URL файлу на Azure
+        return blobClient.Uri.ToString();
     }
 }
